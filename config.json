@@ -1,0 +1,39 @@
+{
+  "sites": [
+    {
+      "name": "Acervo do Nutri",
+      "domain": "acervodonutri.com",
+      "expected_ip": "147.79.84.105",
+      "checkout_url": "https://pay.kiwify.com.br/J5sK3sr",
+      "ssl_alert_days": 20,
+      "content_checks": [
+        {
+          "device": "mobile",
+          "url": "https://acervodonutri.com/",
+          "expected_texts": [
+            "Quero encantar meus pacientes",
+            "Comprar agora por R$ 97,00",
+            "https://pay.kiwify.com.br/J5sK3sr"
+          ]
+        },
+        {
+          "device": "desktop",
+          "url": "https://acervodonutri.com/",
+          "expected_texts": [
+            "Quero encantar meus pacientes",
+            "Comprar agora por R$ 97,00",
+            "https://pay.kiwify.com.br/J5sK3sr"
+          ]
+        }
+      ],
+      "instagram_bio_url": "https://www.acervodonutri.com/?utm_source=bio&utm_medium=instagram&utm_campaign=perfil&utm_content=link-bio&utm_term=bio-instagram",
+      "instagram_bio_expected_domain": "acervodonutri.com",
+      "ad_links": [
+        {
+          "name": "Meta Ads",
+          "url": "https://acervodonutri.com/?utm_source=FB&utm_campaign=teste%7Cteste&utm_medium=teste%7Cteste&utm_content=teste%7Cteste&utm_term=teste"
+        }
+      ]
+    }
+  ]
+}
