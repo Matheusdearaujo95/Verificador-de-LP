@@ -28,7 +28,7 @@ export async function sendTelegram(env: Record<string, string | undefined>, mess
 // quem só tem um número.
 function callmebotRecipients(env: Record<string, string | undefined>): { phone: string; apikey: string }[] {
   const multi = (env.CALLMEBOT_RECIPIENTS || '')
-    .split(',')
+    .split(/[,;]/)
     .map((entry) => entry.trim())
     .filter(Boolean)
     .map((entry) => entry.split(':'))

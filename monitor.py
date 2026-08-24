@@ -399,7 +399,10 @@ def send_email(subject: str, message: str) -> None:
     user = os.environ.get("SMTP_USER")
     password = os.environ.get("SMTP_PASS")
     to_raw = os.environ.get("ALERT_EMAIL_TO", user)
-    to_addrs = [addr.strip() for addr in (to_raw or "").split(",") if addr.strip()]
+    # aceita "," ou ";" como separador — alguns provedores (Google Cloud)
+    # usam vírgula pra separar as próprias variáveis de ambiente, então
+    # documentamos ";" como alternativa nesses casos.
+    to_addrs = [addr.strip() for addr in re.split(r"[,;]", to_raw or "") if addr.strip()]
     if not all([host, user, password]) or not to_addrs:
         print("[alerta] e-mail não configurado (faltam variáveis SMTP_*)")
         return
@@ -423,7 +426,7 @@ def _callmebot_recipients() -> list[tuple[str, str]]:
     # pra quem só tem um número.
     multi = os.environ.get("CALLMEBOT_RECIPIENTS", "")
     pairs = []
-    for entry in multi.split(","):
+    for entry in re.split(r"[,;]", multi):
         entry = entry.strip()
         if not entry:
             continue

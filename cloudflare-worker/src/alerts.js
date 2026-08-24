@@ -32,7 +32,7 @@ export async function sendEmail(env, subject, message) {
       authType: 'plain',
     });
     const toAddrs = (env.ALERT_EMAIL_TO || env.SMTP_USER || '')
-      .split(',')
+      .split(/[,;]/)
       .map((addr) => addr.trim())
       .filter(Boolean);
     await mailer.send({
@@ -54,7 +54,7 @@ export async function sendEmail(env, subject, message) {
 // quem só tem um número.
 function callmebotRecipients(env) {
   const multi = (env.CALLMEBOT_RECIPIENTS || '')
-    .split(',')
+    .split(/[,;]/)
     .map((entry) => entry.trim())
     .filter(Boolean)
     .map((entry) => entry.split(':'))
