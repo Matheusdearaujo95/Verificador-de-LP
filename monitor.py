@@ -32,6 +32,12 @@ import requests
 # ---------------------------------------------------------------------------
 
 CONFIG_PATH = os.environ.get("VIGIA_CONFIG", os.path.join(os.path.dirname(__file__), "config.json"))
+# Se definido, o config.json é buscado ao vivo dessa URL a cada execução em
+# vez do arquivo local — assim como Cloudflare Workers e Deno Deploy,
+# editar o config.json (pelo editor.html) e subir pro GitHub já vale sem
+# precisar reimplantar a função. GitHub Actions e a VM continuam lendo o
+# arquivo local (já é sempre a versão atual do repositório).
+CONFIG_URL = os.environ.get("VIGIA_CONFIG_URL")
 STATE_PATH = os.environ.get("VIGIA_STATE", os.path.join(os.path.dirname(__file__), "state.json"))
 PROVIDER_NAME = os.environ.get("VIGIA_PROVIDER_NAME", "desconhecido")
 
@@ -502,21 +508,37 @@ def build_site_checks(site: dict) -> dict:
 
 
 def run() -> int:
-    if not os.path.exists(CONFIG_PATH):
-        send_alert(
-            "configuração inválida",
-            f"Arquivo de config não encontrado em '{CONFIG_PATH}'. Nenhuma checagem foi feita.",
-        )
-        return 1
+    if CONFIG_URL:
+        try:
+            resp = requests.get(
+                CONFIG_URL,
+                headers={"user-agent": "vigia-monitor", "accept": "application/vnd.github.raw+json"},
+                timeout=REQUEST_TIMEOUT,
+            )
+            resp.raise_for_status()
+            config = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            send_alert(
+                "configuração inválida",
+                f"Não consegui buscar o config.json em '{CONFIG_URL}': {exc}. Nenhuma checagem foi feita.",
+            )
+            return 1
+    else:
+        if not os.path.exists(CONFIG_PATH):
+            send_alert(
+                "configuração inválida",
+                f"Arquivo de config não encontrado em '{CONFIG_PATH}'. Nenhuma checagem foi feita.",
+            )
+            return 1
 
-    try:
-        config = load_json(CONFIG_PATH)
-    except Exception as exc:  # noqa: BLE001
-        send_alert(
-            "configuração inválida",
-            f"config.json malformado (JSON inválido): {exc}. Nenhuma checagem foi feita.",
-        )
-        return 1
+        try:
+            config = load_json(CONFIG_PATH)
+        except Exception as exc:  # noqa: BLE001
+            send_alert(
+                "configuração inválida",
+                f"config.json malformado (JSON inválido): {exc}. Nenhuma checagem foi feita.",
+            )
+            return 1
 
     problems = validate_config(config)
     if problems:

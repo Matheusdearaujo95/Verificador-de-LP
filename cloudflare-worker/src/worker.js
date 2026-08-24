@@ -1,4 +1,3 @@
-import config from '../../config.json';
 import {
   checkDnsResolvers,
   checkDnsRegion,
@@ -12,6 +11,26 @@ import { validateConfig } from './validate.js';
 import { sendAlert } from './alerts.js';
 
 const PROVIDER_NAME = 'Cloudflare Workers';
+
+// Assim como no Deno Deploy, o config.json não fica "gravado" dentro do
+// Worker — é buscado ao vivo do GitHub a cada execução. Editar o
+// config.json (pelo editor.html) e subir pro GitHub já vale aqui, sem
+// precisar rodar `wrangler deploy` de novo.
+const DEFAULT_CONFIG_URL =
+  'https://api.github.com/repos/Matheusdearaujo95/Verificador-de-LP/contents/config.json?ref=main';
+
+async function loadConfig(env) {
+  const url = env.VIGIA_CONFIG_URL || DEFAULT_CONFIG_URL;
+  const resp = await fetch(url, {
+    headers: {
+      accept: 'application/vnd.github.raw+json',
+      'cache-control': 'no-cache',
+      'user-agent': 'vigia-cloudflare-worker',
+    },
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} ao buscar ${url}`);
+  return await resp.json();
+}
 
 async function runSiteChecks(site) {
   const results = {};
@@ -43,6 +62,19 @@ async function runSiteChecks(site) {
 }
 
 async function runVigia(env) {
+  let config;
+  try {
+    config = await loadConfig(env);
+  } catch (err) {
+    await sendAlert(
+      env,
+      PROVIDER_NAME,
+      'configuração inválida',
+      `Não consegui buscar o config.json: ${err.message}. Nenhuma checagem foi feita.`
+    );
+    return;
+  }
+
   const problems = validateConfig(config);
   if (problems.length) {
     await sendAlert(
