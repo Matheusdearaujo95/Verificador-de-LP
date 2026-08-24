@@ -57,7 +57,7 @@ gcloud functions deploy "$FUNCTION_NAME" \
   --no-allow-unauthenticated \
   --memory=256Mi \
   --timeout=120s \
-  --set-env-vars="VIGIA_PROVIDER_NAME=Google Cloud Functions,VIGIA_STATE_BACKEND=gcs,VIGIA_GCS_BUCKET=${BUCKET_NAME}"
+  --set-env-vars="VIGIA_PROVIDER_NAME=Google Cloud Functions,VIGIA_STATE_BACKEND=gcs,VIGIA_GCS_BUCKET=${BUCKET_NAME},VIGIA_CONFIG_URL=https://api.github.com/repos/SEU_USUARIO/SEU_REPO/contents/config.json?ref=main"
 
 # 3.1) Secrets, num comando separado (--update-env-vars, pra não apagar as
 # variáveis de cima). Importante: o --set-env-vars/--update-env-vars do

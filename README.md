@@ -51,11 +51,10 @@ arquivo). Ele:
 - Avisa em tempo real se algo ficou incompleto ou ambíguo.
 - Gera o `config.json` final (botão Copiar ou Baixar).
 
-Depois de editar, **suba o `config.json` novo pro GitHub** (é o que o
-Deno Deploy usa ao vivo) e, pros outros três provedores, redeploy:
-- GitHub Actions: já lê o arquivo do próprio repositório, não precisa de nada extra.
-- Cloudflare Workers: `cd cloudflare-worker && npx wrangler deploy` (o config vai embutido no deploy).
-- Google Cloud Functions: rode de novo o bloco 3 do `deploy-gcf.sh` (o `--source=.` reenvia o `config.json` atual).
+Depois de editar, **suba o `config.json` novo pro GitHub** — só isso.
+Os 4 provedores buscam o config direto do GitHub a cada execução (nenhum
+fica com uma cópia "gravada" no deploy), então não precisa reimplantar
+nada nos outros três depois de editar.
 
 ## Credenciais usadas
 
