@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 config.test.json
 state.test.json
+node_modules/
+.wrangler/

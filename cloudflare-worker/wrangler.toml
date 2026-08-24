@@ -1,0 +1,13 @@
+name = "vigia-acervodonutri"
+main = "src/worker.js"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/15 * * * *"]
+
+# Criar com: wrangler kv namespace create VIGIA_STATE
+# e colar o "id" que o comando devolver aqui embaixo.
+[[kv_namespaces]]
+binding = "VIGIA_STATE"
+id = "COLE_AQUI_O_ID_DO_NAMESPACE_KV"
