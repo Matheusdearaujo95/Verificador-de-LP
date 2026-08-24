@@ -3,7 +3,7 @@
     {
       "name": "Acervo do Nutri",
       "domain": "acervodonutri.com",
-      "expected_ip": "1.2.3.4",
+      "expected_ip": "147.79.84.105",
       "checkout_url": "https://pay.kiwify.com.br/J5sK3sr",
       "ssl_alert_days": 20,
       "content_checks": [
