@@ -1,4 +1,3 @@
-import config from '../config.json' with { type: 'json' };
 import {
   checkDnsResolvers,
   checkDnsRegion,
@@ -13,6 +12,21 @@ import { validateConfig } from './validate.ts';
 import { sendAlert } from './alerts.ts';
 
 const PROVIDER_NAME = 'Deno Deploy';
+
+// O Deno Deploy só sobe os arquivos de dentro desta pasta (deno-deploy/),
+// então o config.json (que fica um nível acima, compartilhado com os
+// outros provedores) não pode ser importado como arquivo local — ele é
+// buscado direto do GitHub a cada execução. Bônus: editar o config.json e
+// dar push já vale pra esse provedor, sem precisar reimplantar.
+const CONFIG_URL = Deno.env.get('VIGIA_CONFIG_URL') ??
+  'https://raw.githubusercontent.com/Matheusdearaujo95/Verificador-de-LP/main/config.json';
+
+// deno-lint-ignore no-explicit-any
+async function loadConfig(): Promise<any> {
+  const resp = await fetch(CONFIG_URL, { headers: { 'cache-control': 'no-cache' } });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status} ao buscar ${CONFIG_URL}`);
+  return await resp.json();
+}
 
 function loadEnv(): Record<string, string | undefined> {
   const keys = [
@@ -59,6 +73,21 @@ async function runSiteChecks(site: any): Promise<Record<string, CheckResult>> {
 
 async function runVigia() {
   const env = loadEnv();
+
+  // deno-lint-ignore no-explicit-any
+  let config: any;
+  try {
+    config = await loadConfig();
+  } catch (err) {
+    await sendAlert(
+      env,
+      PROVIDER_NAME,
+      'configuração inválida',
+      `Não consegui buscar o config.json em ${CONFIG_URL}: ${(err as Error).message}. Nenhuma checagem foi feita.`
+    );
+    return;
+  }
+
   const problems = validateConfig(config);
   if (problems.length) {
     await sendAlert(
