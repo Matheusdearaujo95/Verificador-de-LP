@@ -196,12 +196,66 @@ o secret novo.
 
 ## Adicionando um novo site
 
-1. Abra o `editor.html`, clique em "+ Novo site", preencha os campos (ou
-   use a caixa de colar código-fonte).
-2. Baixe/copie o `config.json` com os dois sites.
-3. Suba pro GitHub — os 4 provedores já passam a monitorar o site novo na
-   próxima execução, sem nenhuma configuração extra (nenhum secret é
-   por-site, todos são globais).
+Nenhum secret é por-site (Telegram, e-mail, WhatsApp já valem pra
+qualquer site cadastrado), então adicionar um site novo é só editar o
+`config.json` e subir a versão nova pro GitHub — sem mexer em nenhum
+provedor.
+
+### Passo 1 — pegar o `config.json` atual
+
+O `editor.html` abre em branco, sozinho ele não sabe o que já está
+cadastrado — então primeiro baixe o arquivo atual do GitHub:
+
+1. Acesse `github.com/Matheusdearaujo95/Verificador-de-LP/blob/main/config.json`
+2. Clique no ícone de download (uma seta pra baixo, geralmente no canto
+   superior direito do conteúdo do arquivo) — ou clique em "Raw" e depois
+   Ctrl+S (Cmd+S no Mac) pra salvar a página como arquivo.
+3. Guarde esse arquivo em algum lugar que você lembre (ex: Desktop).
+
+### Passo 2 — editar no `editor.html`
+
+1. Abra o `editor.html` no navegador.
+2. Clique em **"Carregar existente"** e selecione o `config.json` que
+   você acabou de baixar — as abas dos sites já cadastrados vão aparecer
+   preenchidas.
+3. Clique em **"+ Novo site"** — uma aba nova em branco aparece.
+4. Preencha os campos (nome, domínio, IP esperado, link de checkout,
+   textos de botão etc.) ou use a caixa "Detectar automaticamente":
+   cole o código-fonte da nova LP e confirme os achados um por um.
+5. Confira o painel de avisos no rodapé da página — precisa estar
+   "Nenhum aviso" antes de exportar.
+6. Clique em **"Baixar config.json"** — isso baixa o arquivo com **todos**
+   os sites (o antigo + o novo), pronto pra substituir o do GitHub.
+
+### Passo 3 — subir a versão nova pro GitHub
+
+Sem precisar de terminal nem git instalado:
+
+1. Acesse de novo `github.com/Matheusdearaujo95/Verificador-de-LP`
+2. Clique no arquivo `config.json` na listagem.
+3. Clique no ícone de lápis (✏️, "Edit this file") no canto superior direito.
+4. Apague todo o conteúdo (Ctrl+A, Delete) e cole o conteúdo do
+   `config.json` que você acabou de baixar (abra ele num editor de texto
+   qualquer — Bloco de Notas, TextEdit — pra copiar).
+5. Role até o final da página, escreva uma mensagem curta tipo
+   "adiciona site X" na caixa de commit, e clique em **"Commit changes"**.
+
+Pronto — na próxima execução de cada provedor (até 15 minutos), o site
+novo já está sendo monitorado.
+
+### Como confirmar que funcionou
+
+- Se o `config.json` ficou com algum problema (campo faltando, JSON
+  malformado), você recebe um alerta explícito de **"configuração
+  inválida"** já na primeira execução seguinte — em qualquer canal
+  configurado. Se isso acontecer, volte no `editor.html`, corrija o que o
+  alerta apontar, e repita o Passo 3.
+- Se não chegar nenhum alerta de configuração inválida em ~15-20 minutos,
+  deu certo. Você também pode conferir direto: abra
+  `github.com/Matheusdearaujo95/Verificador-de-LP/actions`, veja se a
+  execução mais recente do "Vigia - monitoramento de LP" terminou com ✓
+  verde (clique nela e depois em "Rodar o Vigia" pra ver o log completo,
+  linha por linha, de cada checagem do site novo).
 
 ## Troubleshooting — problemas reais encontrados e como foram resolvidos
 
