@@ -1,0 +1,14 @@
+# O deploy do Google Cloud Functions usa a pasta vigia/ inteira como fonte
+# (pra poder reaproveitar o monitor.py), então excluímos aqui tudo que é
+# só dos outros provedores ou do ambiente local.
+.git/
+.gitignore
+.venv/
+__pycache__/
+*.pyc
+state.json
+config.test.json
+state.test.json
+cloudflare-worker/
+deno-deploy/
+.github/

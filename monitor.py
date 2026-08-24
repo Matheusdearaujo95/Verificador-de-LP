@@ -35,6 +35,14 @@ CONFIG_PATH = os.environ.get("VIGIA_CONFIG", os.path.join(os.path.dirname(__file
 STATE_PATH = os.environ.get("VIGIA_STATE", os.path.join(os.path.dirname(__file__), "state.json"))
 PROVIDER_NAME = os.environ.get("VIGIA_PROVIDER_NAME", "desconhecido")
 
+# "file" (padrão, usado por GitHub Actions e pela VM na Oracle) ou "gcs"
+# (usado pelo Google Cloud Functions, que não tem disco persistente entre
+# execuções — o estado nativo da plataforma ali é um objeto no Cloud
+# Storage).
+STATE_BACKEND = os.environ.get("VIGIA_STATE_BACKEND", "file")
+GCS_BUCKET = os.environ.get("VIGIA_GCS_BUCKET")
+GCS_BLOB = os.environ.get("VIGIA_GCS_BLOB", "state.json")
+
 REQUEST_TIMEOUT = 15
 
 DEFAULT_DNS_RESOLVERS = {
@@ -100,6 +108,31 @@ def load_json(path: str) -> dict:
 def save_json(path: str, data: dict) -> None:
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def load_state() -> dict:
+    if STATE_BACKEND == "gcs":
+        from google.cloud import storage  # import tardio: só precisa existir no GCF
+
+        bucket = storage.Client().bucket(GCS_BUCKET)
+        blob = bucket.blob(GCS_BLOB)
+        if not blob.exists():
+            return {}
+        return json.loads(blob.download_as_text())
+
+    return load_json(STATE_PATH) if os.path.exists(STATE_PATH) else {}
+
+
+def save_state(state: dict) -> None:
+    if STATE_BACKEND == "gcs":
+        from google.cloud import storage
+
+        bucket = storage.Client().bucket(GCS_BUCKET)
+        blob = bucket.blob(GCS_BLOB)
+        blob.upload_from_string(json.dumps(state, ensure_ascii=False, indent=2), content_type="application/json")
+        return
+
+    save_json(STATE_PATH, state)
 
 
 # ---------------------------------------------------------------------------
@@ -463,7 +496,14 @@ def run() -> int:
         )
         return 1
 
-    state = load_json(STATE_PATH) if os.path.exists(STATE_PATH) else {}
+    if STATE_BACKEND == "gcs" and not GCS_BUCKET:
+        send_alert(
+            "configuração inválida",
+            "VIGIA_STATE_BACKEND=gcs mas VIGIA_GCS_BUCKET não foi definido. Nenhuma checagem foi feita.",
+        )
+        return 1
+
+    state = load_state()
     had_transition = False
 
     for site in config["sites"]:
@@ -489,7 +529,7 @@ def run() -> int:
                 "checked_at": now_iso(),
             }
 
-    save_json(STATE_PATH, state)
+    save_state(state)
     print(f"Checagem concluída em {now_iso()} (provedor: {PROVIDER_NAME}). Mudanças de estado: {had_transition}")
     return 0
 

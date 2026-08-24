@@ -1,2 +1,8 @@
 dnspython>=2.6.0
 requests>=2.31.0
+
+# As duas de baixo só são usadas pelo main.py (entrada do Google Cloud
+# Functions) — GitHub Actions e a VM na Oracle não precisam delas, mas não
+# tem problema instalar mesmo assim.
+functions-framework>=3.8.0
+google-cloud-storage>=2.18.0
