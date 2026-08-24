@@ -398,19 +398,20 @@ def send_email(subject: str, message: str) -> None:
     port = int(os.environ.get("SMTP_PORT", "587"))
     user = os.environ.get("SMTP_USER")
     password = os.environ.get("SMTP_PASS")
-    to_addr = os.environ.get("ALERT_EMAIL_TO", user)
-    if not all([host, user, password, to_addr]):
+    to_raw = os.environ.get("ALERT_EMAIL_TO", user)
+    to_addrs = [addr.strip() for addr in (to_raw or "").split(",") if addr.strip()]
+    if not all([host, user, password]) or not to_addrs:
         print("[alerta] e-mail não configurado (faltam variáveis SMTP_*)")
         return
     msg = MIMEText(message, "plain", "utf-8")
     msg["Subject"] = subject
     msg["From"] = user
-    msg["To"] = to_addr
+    msg["To"] = ", ".join(to_addrs)
     try:
         with smtplib.SMTP(host, port, timeout=REQUEST_TIMEOUT) as server:
             server.starttls()
             server.login(user, password)
-            server.sendmail(user, [to_addr], msg.as_string())
+            server.sendmail(user, to_addrs, msg.as_string())
     except Exception as exc:  # noqa: BLE001
         print(f"[alerta] falha ao enviar e-mail: {exc}")
 

@@ -31,9 +31,13 @@ export async function sendEmail(env, subject, message) {
       credentials: { username: env.SMTP_USER, password: env.SMTP_PASS },
       authType: 'plain',
     });
+    const toAddrs = (env.ALERT_EMAIL_TO || env.SMTP_USER || '')
+      .split(',')
+      .map((addr) => addr.trim())
+      .filter(Boolean);
     await mailer.send({
       from: { email: env.SMTP_USER },
-      to: { email: env.ALERT_EMAIL_TO || env.SMTP_USER },
+      to: toAddrs,
       subject: `[Vigia] ${subject}`,
       text: message,
     });
