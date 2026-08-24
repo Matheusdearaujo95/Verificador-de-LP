@@ -416,17 +416,43 @@ def send_email(subject: str, message: str) -> None:
         print(f"[alerta] falha ao enviar e-mail: {exc}")
 
 
-def send_whatsapp_callmebot(message: str) -> None:
+def _callmebot_recipients() -> list[tuple[str, str]]:
+    # CALLMEBOT_RECIPIENTS="5511999999999:123456,5511888888888:654321" — um
+    # par por número, porque a apikey do CallMeBot é vinculada ao número que
+    # ativou. Mantém CALLMEBOT_PHONE/CALLMEBOT_APIKEY funcionando sozinhos
+    # pra quem só tem um número.
+    multi = os.environ.get("CALLMEBOT_RECIPIENTS", "")
+    pairs = []
+    for entry in multi.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+        if ":" not in entry:
+            continue
+        phone, apikey = entry.split(":", 1)
+        if phone.strip() and apikey.strip():
+            pairs.append((phone.strip(), apikey.strip()))
+    if pairs:
+        return pairs
+
     phone = os.environ.get("CALLMEBOT_PHONE")
     apikey = os.environ.get("CALLMEBOT_APIKEY")
-    if not phone or not apikey:
-        print("[alerta] CallMeBot não configurado (faltam CALLMEBOT_PHONE/CALLMEBOT_APIKEY) — ok, é bônus")
+    if phone and apikey:
+        return [(phone, apikey)]
+    return []
+
+
+def send_whatsapp_callmebot(message: str) -> None:
+    recipients = _callmebot_recipients()
+    if not recipients:
+        print("[alerta] CallMeBot não configurado (faltam CALLMEBOT_PHONE/CALLMEBOT_APIKEY ou CALLMEBOT_RECIPIENTS) — ok, é bônus")
         return
-    try:
-        params = urllib.parse.urlencode({"phone": phone, "text": message, "apikey": apikey})
-        requests.get(f"https://api.callmebot.com/whatsapp.php?{params}", timeout=REQUEST_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001
-        print(f"[alerta] falha ao enviar WhatsApp via CallMeBot (esperado, não é confiável): {exc}")
+    for phone, apikey in recipients:
+        try:
+            params = urllib.parse.urlencode({"phone": phone, "text": message, "apikey": apikey})
+            requests.get(f"https://api.callmebot.com/whatsapp.php?{params}", timeout=REQUEST_TIMEOUT)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[alerta] falha ao enviar WhatsApp via CallMeBot pra {phone} (esperado, não é confiável): {exc}")
 
 
 def send_alert(subject: str, message: str) -> None:

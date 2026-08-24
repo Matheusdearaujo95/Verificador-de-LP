@@ -22,21 +22,41 @@ export async function sendTelegram(env: Record<string, string | undefined>, mess
   }
 }
 
+// CALLMEBOT_RECIPIENTS="5511999999999:123456,5511888888888:654321" — um par
+// por número, porque a apikey do CallMeBot é vinculada ao número que
+// ativou. Mantém CALLMEBOT_PHONE/CALLMEBOT_APIKEY funcionando sozinhos pra
+// quem só tem um número.
+function callmebotRecipients(env: Record<string, string | undefined>): { phone: string; apikey: string }[] {
+  const multi = (env.CALLMEBOT_RECIPIENTS || '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => entry.split(':'))
+    .filter((parts) => parts.length === 2 && parts[0].trim() && parts[1].trim())
+    .map(([phone, apikey]) => ({ phone: phone.trim(), apikey: apikey.trim() }));
+  if (multi.length) return multi;
+  if (env.CALLMEBOT_PHONE && env.CALLMEBOT_APIKEY) {
+    return [{ phone: env.CALLMEBOT_PHONE, apikey: env.CALLMEBOT_APIKEY }];
+  }
+  return [];
+}
+
 export async function sendWhatsapp(env: Record<string, string | undefined>, message: string) {
-  if (!env.CALLMEBOT_PHONE || !env.CALLMEBOT_APIKEY) {
+  const recipients = callmebotRecipients(env);
+  if (recipients.length === 0) {
     console.log('[alerta] CallMeBot não configurado — ok, é bônus, não é confiável sozinho');
     return;
   }
-  try {
-    const params = new URLSearchParams({
-      phone: env.CALLMEBOT_PHONE,
-      text: message,
-      apikey: env.CALLMEBOT_APIKEY,
-    });
-    await fetch(`https://api.callmebot.com/whatsapp.php?${params}`);
-  } catch (err) {
-    console.log(`[alerta] falha ao enviar WhatsApp via CallMeBot (esperado, não é confiável): ${(err as Error).message}`);
-  }
+  await Promise.all(
+    recipients.map(async ({ phone, apikey }) => {
+      try {
+        const params = new URLSearchParams({ phone, text: message, apikey });
+        await fetch(`https://api.callmebot.com/whatsapp.php?${params}`);
+      } catch (err) {
+        console.log(`[alerta] falha ao enviar WhatsApp via CallMeBot pra ${phone} (esperado, não é confiável): ${(err as Error).message}`);
+      }
+    })
+  );
 }
 
 export async function sendAlert(
