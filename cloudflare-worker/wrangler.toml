@@ -10,4 +10,4 @@ crons = ["*/15 * * * *"]
 # e colar o "id" que o comando devolver aqui embaixo.
 [[kv_namespaces]]
 binding = "VIGIA_STATE"
-id = "COLE_AQUI_O_ID_DO_NAMESPACE_KV"
+id = "619a70147fc1459a9b92070c3e4e4eaa"
