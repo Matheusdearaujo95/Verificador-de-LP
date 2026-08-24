@@ -18,12 +18,19 @@ const PROVIDER_NAME = 'Deno Deploy';
 // outros provedores) não pode ser importado como arquivo local — ele é
 // buscado direto do GitHub a cada execução. Bônus: editar o config.json e
 // dar push já vale pra esse provedor, sem precisar reimplantar.
+//
+// Usa a API do GitHub (não o raw.githubusercontent.com) de propósito: o
+// raw.githubusercontent tem um cache de CDN que, na prática, demorou muito
+// mais que os ~5 min documentados pra refletir um push durante os testes —
+// a API sempre devolve o conteúdo atual do branch, sem esse cache.
 const CONFIG_URL = Deno.env.get('VIGIA_CONFIG_URL') ??
-  'https://raw.githubusercontent.com/Matheusdearaujo95/Verificador-de-LP/main/config.json';
+  'https://api.github.com/repos/Matheusdearaujo95/Verificador-de-LP/contents/config.json?ref=main';
 
 // deno-lint-ignore no-explicit-any
 async function loadConfig(): Promise<any> {
-  const resp = await fetch(CONFIG_URL, { headers: { 'cache-control': 'no-cache' } });
+  const resp = await fetch(CONFIG_URL, {
+    headers: { accept: 'application/vnd.github.raw+json', 'cache-control': 'no-cache' },
+  });
   if (!resp.ok) throw new Error(`HTTP ${resp.status} ao buscar ${CONFIG_URL}`);
   return await resp.json();
 }
