@@ -40,7 +40,7 @@ gcloud functions deploy "$FUNCTION_NAME" \
   --set-env-vars="VIGIA_PROVIDER_NAME=Google Cloud Functions,VIGIA_STATE_BACKEND=gcs,VIGIA_GCS_BUCKET=${BUCKET_NAME}" \
   --set-env-vars="TELEGRAM_BOT_TOKEN=SUBSTITUA,TELEGRAM_CHAT_ID=SUBSTITUA" \
   --set-env-vars="SMTP_HOST=smtp.gmail.com,SMTP_PORT=587,SMTP_USER=SUBSTITUA,SMTP_PASS=SUBSTITUA,ALERT_EMAIL_TO=SUBSTITUA" \
-  --set-env-vars="CALLMEBOT_PHONE=SUBSTITUA,CALLMEBOT_APIKEY=SUBSTITUA"
+  --set-env-vars="CALLMEBOT_RECIPIENTS=+5511999999999:SUBSTITUA,+5511888888888:SUBSTITUA"
 
 # 4) Dar permissão pra essa conta de serviço invocar a função.
 gcloud functions add-invoker-policy-binding "$FUNCTION_NAME" \
