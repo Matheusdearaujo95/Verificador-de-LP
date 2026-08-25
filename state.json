@@ -3,47 +3,47 @@
     "dns_resolvers": {
       "ok": true,
       "detail": "todos os 7 resolvedores concordam em 147.79.84.105",
-      "checked_at": "2026-08-25T16:03:12+00:00"
+      "checked_at": "2026-08-25T16:57:11+00:00"
     },
     "dns_region": {
       "ok": true,
       "detail": "IP esperado confirmado em: São Paulo, Rio de Janeiro, Nordeste, EUA, Europa",
-      "checked_at": "2026-08-25T16:03:12+00:00"
+      "checked_at": "2026-08-25T16:57:11+00:00"
     },
     "ssl": {
-      "ok": false,
-      "detail": "erro ao verificar certificado: [Errno 101] Network is unreachable",
-      "checked_at": "2026-08-25T16:03:15+00:00"
+      "ok": true,
+      "detail": "certificado válido até 2026-11-08 (75 dias)",
+      "checked_at": "2026-08-25T16:57:14+00:00"
     },
     "content_mobile": {
-      "ok": false,
-      "detail": "erro ao acessar https://acervodonutri.com/: HTTPSConnectionPool(host='acervodonutri.com', port=443): Max retries exceeded with url: / (Caused by NewConnectionError(\"HTTPSConnection(host='acervodonutri.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable\"))",
-      "checked_at": "2026-08-25T16:03:19+00:00"
+      "ok": true,
+      "detail": "todos os 3 textos encontrados (mobile)",
+      "checked_at": "2026-08-25T16:57:16+00:00"
     },
     "content_desktop": {
-      "ok": false,
-      "detail": "erro ao acessar https://acervodonutri.com/: HTTPSConnectionPool(host='acervodonutri.com', port=443): Max retries exceeded with url: / (Caused by NewConnectionError(\"HTTPSConnection(host='acervodonutri.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable\"))",
-      "checked_at": "2026-08-25T16:03:22+00:00"
+      "ok": true,
+      "detail": "todos os 3 textos encontrados (desktop)",
+      "checked_at": "2026-08-25T16:57:18+00:00"
     },
     "checkout": {
       "ok": true,
       "detail": "checkout no ar (HTTP 200)",
-      "checked_at": "2026-08-25T16:03:22+00:00"
+      "checked_at": "2026-08-25T16:57:18+00:00"
     },
     "instagram_bio": {
-      "ok": false,
-      "detail": "erro ao acessar link da bio: HTTPSConnectionPool(host='www.acervodonutri.com', port=443): Max retries exceeded with url: /?utm_source=bio&utm_medium=instagram&utm_campaign=perfil&utm_content=link-bio&utm_term=bio-instagram (Caused by NewConnectionError(\"HTTPSConnection(host='www.acervodonutri.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable\"))",
-      "checked_at": "2026-08-25T16:03:26+00:00"
+      "ok": true,
+      "detail": "link da bio termina em www.acervodonutri.com",
+      "checked_at": "2026-08-25T16:57:20+00:00"
     },
     "ad_link_0_Meta Ads": {
-      "ok": false,
-      "detail": "erro ao seguir redirecionamento: HTTPSConnectionPool(host='acervodonutri.com', port=443): Max retries exceeded with url: /?utm_source=FB&utm_campaign=teste%7Cteste&utm_medium=teste%7Cteste&utm_content=teste%7Cteste&utm_term=teste (Caused by NewConnectionError(\"HTTPSConnection(host='acervodonutri.com', port=443): Failed to establish a new connection: [Errno 101] Network is unreachable\"))",
-      "checked_at": "2026-08-25T16:03:29+00:00"
+      "ok": true,
+      "detail": "todos os 5 UTMs sobreviveram até https://acervodonutri.com/?utm_source=FB&utm_campaign=teste%7Cteste&utm_medium=teste%7Cteste&utm_content=teste%7Cteste&utm_term=teste",
+      "checked_at": "2026-08-25T16:57:22+00:00"
     },
     "safe_browsing": {
       "ok": true,
       "detail": "nenhuma URL marcada como phishing/malware pelo Google Safe Browsing (2 verificadas)",
-      "checked_at": "2026-08-25T16:03:29+00:00"
+      "checked_at": "2026-08-25T16:57:22+00:00"
     },
     "pagespeed": {
       "ok": false,
