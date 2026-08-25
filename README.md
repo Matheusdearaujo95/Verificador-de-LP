@@ -68,8 +68,9 @@ problema persiste.
 | **Deno Deploy** | `deno-deploy/main.ts` | Deno KV | 5 resolvedores (DoH) | só alcançabilidade | **não** — Deno Deploy bloqueia as portas 25/465/587 pra todo mundo, sem exceção |
 | **Google Cloud Functions** | `main.py` → `monitor.py` | bucket no Cloud Storage | 7 resolvedores (UDP bruto) | validade em dias | sim |
 
-Todos os 4 buscam o `config.json` **ao vivo do GitHub** a cada execução
-(API do GitHub, não `raw.githubusercontent.com` — ver Troubleshooting).
+Todos os 4 buscam o `config.json` **ao vivo do GitHub** a cada execução,
+via CDN do jsdelivr (não a API do GitHub nem `raw.githubusercontent.com`
+direto — ver Troubleshooting pra entender por quê).
 Nenhum fica com uma cópia "gravada" no deploy, então editar o
 `config.json` e subir pro GitHub já vale em todos, sem redeploy.
 
@@ -270,14 +271,26 @@ redeploy, numa VM nova), a causa provavelmente é a mesma.
   do Deno só sobe os arquivos de dentro da pasta indicada como fonte, ao
   contrário do Wrangler (Cloudflare), que empacota tudo antes de subir.
   Resolvido buscando o config ao vivo via `fetch()` em vez de `import`.
-- **`raw.githubusercontent.com` demorou muito mais que os ~5 minutos
-  documentados** pra refletir um push durante os testes — trocado pela
-  API do GitHub (`api.github.com/repos/.../contents/...`), que não tem
-  esse cache de CDN.
-- **A API do GitHub exige um header `User-Agent`** em todo request — o
-  `curl` manda um por padrão (por isso funcionava testando na mão), mas o
-  `fetch()` de Workers/Deno/Python não manda nada por padrão, e a API
-  responde 403 sem esse header.
+- **De onde buscar o `config.json` ao vivo mudou 3 vezes** até chegar
+  numa fonte confiável — vale registrar a história completa porque cada
+  tentativa falhou por um motivo diferente e não óbvio:
+  1. `raw.githubusercontent.com` — demorou muito mais que os ~5 minutos
+     documentados pra refletir um push durante os testes (cache de CDN).
+  2. `api.github.com/repos/.../contents/...` — resolveu o cache, mas
+     exige um header `User-Agent` em todo request (o `curl` manda um por
+     padrão, por isso funcionava testando na mão, mas `fetch()` de
+     Workers/Deno/Python não manda nada, e a API responde 403 sem esse
+     header). Corrigido... e mesmo assim, **um dia depois em produção**,
+     começou a devolver 403 direto — a API do GitHub sem autenticação só
+     libera **60 requisições por hora por IP**, e o IP de saída de
+     plataformas como Cloudflare Workers é compartilhado entre milhares de
+     clientes ao redor do mundo, então essa cota se esgota rápido demais
+     pra esse tipo de uso.
+  3. **jsdelivr** (`cdn.jsdelivr.net/gh/usuario/repo@main/config.json`) —
+     a solução final: é um CDN de verdade, feito especificamente pra
+     servir arquivos de repositórios do GitHub, sem esse tipo de limite
+     por IP. Usado hoje pelos 3 provedores que buscam o config ao vivo
+     (Cloudflare Workers, Deno Deploy, Google Cloud Functions).
 - **`gcloud functions deploy` falhando com "missing permission on the
   build service account"** — em projetos GCP novos, a conta de serviço
   padrão do Compute não vem com a permissão `roles/cloudbuild.builds.builder`
