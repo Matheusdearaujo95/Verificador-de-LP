@@ -41,6 +41,10 @@ CONFIG_URL = os.environ.get("VIGIA_CONFIG_URL")
 STATE_PATH = os.environ.get("VIGIA_STATE", os.path.join(os.path.dirname(__file__), "state.json"))
 PROVIDER_NAME = os.environ.get("VIGIA_PROVIDER_NAME", "desconhecido")
 
+# Chave da API do Google (Safe Browsing + PageSpeed Insights). Se não for
+# definida, as duas checagens simplesmente não rodam (não é erro).
+GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+
 # "file" (padrão, usado por GitHub Actions e pela VM na Oracle) ou "gcs"
 # (usado pelo Google Cloud Functions, que não tem disco persistente entre
 # execuções — o estado nativo da plataforma ali é um objeto no Cloud
@@ -370,6 +374,61 @@ def check_ad_link_utms(url: str) -> CheckResult:
     return CheckResult(True, f"todos os {len(expected_utms)} UTMs sobreviveram até {resp.url}")
 
 
+SAFE_BROWSING_THREAT_TYPES = [
+    "MALWARE",
+    "SOCIAL_ENGINEERING",
+    "UNWANTED_SOFTWARE",
+    "POTENTIALLY_HARMFUL_APPLICATION",
+]
+
+
+def check_safe_browsing(urls: list[str]) -> CheckResult:
+    body = {
+        "client": {"clientId": "vigia-monitor", "clientVersion": "1.0"},
+        "threatInfo": {
+            "threatTypes": SAFE_BROWSING_THREAT_TYPES,
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": u} for u in urls],
+        },
+    }
+    try:
+        resp = requests.post(
+            f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={GOOGLE_API_KEY}",
+            json=body,
+            timeout=REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(False, f"erro ao consultar o Google Safe Browsing: {exc}")
+
+    matches = data.get("matches", [])
+    if matches:
+        found = sorted({m.get("threat", {}).get("url", "?") + " (" + m.get("threatType", "?") + ")" for m in matches})
+        return CheckResult(False, f"Google Safe Browsing encontrou problema: {', '.join(found)}")
+    return CheckResult(True, f"nenhuma URL marcada como phishing/malware pelo Google Safe Browsing ({len(urls)} verificadas)")
+
+
+def check_pagespeed(url: str, alert_below: float) -> CheckResult:
+    try:
+        resp = requests.get(
+            "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
+            params={"url": url, "key": GOOGLE_API_KEY, "strategy": "mobile", "category": "performance"},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        score = data["lighthouseResult"]["categories"]["performance"]["score"]
+    except Exception as exc:  # noqa: BLE001
+        return CheckResult(False, f"erro ao consultar o PageSpeed Insights: {exc}")
+
+    score_pct = round(score * 100)
+    if score < alert_below:
+        return CheckResult(False, f"nota de performance (mobile) caiu pra {score_pct}/100, abaixo do limite de {round(alert_below * 100)}")
+    return CheckResult(True, f"nota de performance (mobile): {score_pct}/100")
+
+
 def strip_tracking_params(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
     params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
@@ -503,6 +562,14 @@ def build_site_checks(site: dict) -> dict:
     for i, ad_link in enumerate(site.get("ad_links", [])):
         key = f"ad_link_{i}_{ad_link.get('name', 'sem_nome')}"
         results[key] = check_ad_link_utms(ad_link["url"])
+
+    if GOOGLE_API_KEY:
+        home_url = f"https://{site['domain']}/"
+        urls_to_check = sorted({home_url, site["checkout_url"]})
+        results["safe_browsing"] = check_safe_browsing(urls_to_check)
+
+        pagespeed_alert_below = site.get("pagespeed_alert_below", 0.5)
+        results["pagespeed"] = check_pagespeed(home_url, pagespeed_alert_below)
 
     return results
 

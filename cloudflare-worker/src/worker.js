@@ -6,6 +6,8 @@ import {
   checkUrlIsUp,
   checkInstagramBio,
   checkAdLinkUtms,
+  checkSafeBrowsing,
+  checkPagespeed,
 } from './checks.js';
 import { validateConfig } from './validate.js';
 import { sendAlert } from './alerts.js';
@@ -33,7 +35,7 @@ async function loadConfig(env) {
   return await resp.json();
 }
 
-async function runSiteChecks(site) {
+async function runSiteChecks(site, env) {
   const results = {};
 
   results.dns_resolvers = await checkDnsResolvers(site.domain, site.expected_ip);
@@ -57,6 +59,15 @@ async function runSiteChecks(site) {
   for (let i = 0; i < adLinks.length; i++) {
     const key = `ad_link_${i}_${adLinks[i].name || 'sem_nome'}`;
     results[key] = await checkAdLinkUtms(adLinks[i].url);
+  }
+
+  if (env.GOOGLE_API_KEY) {
+    const homeUrl = `https://${site.domain}/`;
+    const urlsToCheck = [...new Set([homeUrl, site.checkout_url])];
+    results.safe_browsing = await checkSafeBrowsing(urlsToCheck, env.GOOGLE_API_KEY);
+
+    const pagespeedAlertBelow = site.pagespeed_alert_below ?? 0.5;
+    results.pagespeed = await checkPagespeed(homeUrl, env.GOOGLE_API_KEY, pagespeedAlertBelow);
   }
 
   return results;
@@ -93,7 +104,7 @@ async function runVigia(env) {
     const previousState = previousRaw ? JSON.parse(previousRaw) : {};
     const newState = {};
 
-    const results = await runSiteChecks(site);
+    const results = await runSiteChecks(site, env);
 
     for (const [checkKey, result] of Object.entries(results)) {
       const previous = previousState[checkKey];

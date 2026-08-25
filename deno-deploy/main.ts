@@ -6,6 +6,8 @@ import {
   checkUrlIsUp,
   checkInstagramBio,
   checkAdLinkUtms,
+  checkSafeBrowsing,
+  checkPagespeed,
   type CheckResult,
 } from './checks.ts';
 import { validateConfig } from './validate.ts';
@@ -41,6 +43,7 @@ function loadEnv(): Record<string, string | undefined> {
     'TELEGRAM_CHAT_ID',
     'CALLMEBOT_PHONE',
     'CALLMEBOT_APIKEY',
+    'GOOGLE_API_KEY',
   ];
   const env: Record<string, string | undefined> = {};
   for (const key of keys) env[key] = Deno.env.get(key);
@@ -48,7 +51,7 @@ function loadEnv(): Record<string, string | undefined> {
 }
 
 // deno-lint-ignore no-explicit-any
-async function runSiteChecks(site: any): Promise<Record<string, CheckResult>> {
+async function runSiteChecks(site: any, env: Record<string, string | undefined>): Promise<Record<string, CheckResult>> {
   const results: Record<string, CheckResult> = {};
 
   results.dns_resolvers = await checkDnsResolvers(site.domain, site.expected_ip);
@@ -73,6 +76,15 @@ async function runSiteChecks(site: any): Promise<Record<string, CheckResult>> {
   for (let i = 0; i < adLinks.length; i++) {
     const key = `ad_link_${i}_${adLinks[i].name || 'sem_nome'}`;
     results[key] = await checkAdLinkUtms(adLinks[i].url);
+  }
+
+  if (env.GOOGLE_API_KEY) {
+    const homeUrl = `https://${site.domain}/`;
+    const urlsToCheck = [...new Set([homeUrl, site.checkout_url])];
+    results.safe_browsing = await checkSafeBrowsing(urlsToCheck, env.GOOGLE_API_KEY);
+
+    const pagespeedAlertBelow = site.pagespeed_alert_below ?? 0.5;
+    results.pagespeed = await checkPagespeed(homeUrl, env.GOOGLE_API_KEY, pagespeedAlertBelow);
   }
 
   return results;
@@ -115,7 +127,7 @@ async function runVigia() {
       // deno-lint-ignore no-explicit-any
       const newState: Record<string, any> = {};
 
-      const results = await runSiteChecks(site);
+      const results = await runSiteChecks(site, env);
 
       for (const [checkKey, result] of Object.entries(results)) {
         const previous = previousState[checkKey];
