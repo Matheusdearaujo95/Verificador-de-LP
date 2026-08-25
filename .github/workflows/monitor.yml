@@ -40,6 +40,7 @@ jobs:
           CALLMEBOT_PHONE: ${{ secrets.CALLMEBOT_PHONE }}
           CALLMEBOT_APIKEY: ${{ secrets.CALLMEBOT_APIKEY }}
           CALLMEBOT_RECIPIENTS: ${{ secrets.CALLMEBOT_RECIPIENTS }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
         run: python monitor.py
 
       - name: Salvar o estado (commit de volta pro repositório)
