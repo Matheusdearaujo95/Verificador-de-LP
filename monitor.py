@@ -415,7 +415,7 @@ def check_pagespeed(url: str, alert_below: float) -> CheckResult:
         resp = requests.get(
             "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
             params={"url": url, "key": GOOGLE_API_KEY, "strategy": "mobile", "category": "performance"},
-            timeout=60,
+            timeout=90,
         )
         resp.raise_for_status()
         data = resp.json()

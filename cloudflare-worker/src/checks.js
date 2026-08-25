@@ -242,7 +242,7 @@ export async function checkPagespeed(url, apiKey, alertBelow) {
     const params = new URLSearchParams({ url, key: apiKey, strategy: 'mobile', category: 'performance' });
     const resp = await withTimeout(
       fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`),
-      60000
+      90000
     );
     if (!resp.ok) return { ok: false, detail: `PageSpeed Insights respondeu HTTP ${resp.status}` };
     const data = await resp.json();
