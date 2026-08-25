@@ -92,7 +92,6 @@ async function runSiteChecks(site: any, env: Record<string, string | undefined>)
 
 async function runVigia() {
   const env = loadEnv();
-
   // deno-lint-ignore no-explicit-any
   let config: any;
   try {

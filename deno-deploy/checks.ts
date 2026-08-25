@@ -206,14 +206,14 @@ export async function checkSafeBrowsing(urls: string[], apiKey: string): Promise
   };
   try {
     const resp = await withTimeout(
-      fetch(`https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${apiKey}`, {
+      fetch(`https://safebrowsing.googleapis.com/v4/threatMatches:find`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify(body),
       }),
       REQUEST_TIMEOUT_MS
     );
-    if (!resp.ok) return { ok: false, detail: `Safe Browsing respondeu HTTP ${resp.status}` };
+    if (!resp.ok) return { ok: false, detail: `Safe Browsing respondeu HTTP ${resp.status}: ${await resp.text()}` };
     const data = await resp.json();
     const matches = data.matches || [];
     if (matches.length) {
@@ -231,12 +231,14 @@ export async function checkSafeBrowsing(urls: string[], apiKey: string): Promise
 
 export async function checkPagespeed(url: string, apiKey: string, alertBelow: number): Promise<CheckResult> {
   try {
-    const params = new URLSearchParams({ url, key: apiKey, strategy: 'mobile', category: 'performance' });
+    const params = new URLSearchParams({ url, strategy: 'mobile', category: 'performance' });
     const resp = await withTimeout(
-      fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`),
+      fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`, {
+        headers: { 'x-goog-api-key': apiKey },
+      }),
       90000
     );
-    if (!resp.ok) return { ok: false, detail: `PageSpeed Insights respondeu HTTP ${resp.status}` };
+    if (!resp.ok) return { ok: false, detail: `PageSpeed Insights respondeu HTTP ${resp.status}: ${await resp.text()}` };
     const data = await resp.json();
     const score = data.lighthouseResult.categories.performance.score;
     const scorePct = Math.round(score * 100);
