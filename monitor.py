@@ -510,11 +510,7 @@ def build_site_checks(site: dict) -> dict:
 def run() -> int:
     if CONFIG_URL:
         try:
-            resp = requests.get(
-                CONFIG_URL,
-                headers={"user-agent": "vigia-monitor", "accept": "application/vnd.github.raw+json"},
-                timeout=REQUEST_TIMEOUT,
-            )
+            resp = requests.get(CONFIG_URL, headers={"user-agent": "vigia-monitor"}, timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             config = resp.json()
         except Exception as exc:  # noqa: BLE001

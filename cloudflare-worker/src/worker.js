@@ -13,21 +13,22 @@ import { sendAlert } from './alerts.js';
 const PROVIDER_NAME = 'Cloudflare Workers';
 
 // Assim como no Deno Deploy, o config.json não fica "gravado" dentro do
-// Worker — é buscado ao vivo do GitHub a cada execução. Editar o
-// config.json (pelo editor.html) e subir pro GitHub já vale aqui, sem
-// precisar rodar `wrangler deploy` de novo.
+// Worker — é buscado ao vivo a cada execução. Editar o config.json (pelo
+// editor.html) e subir pro GitHub já vale aqui, sem precisar rodar
+// `wrangler deploy` de novo.
+//
+// Usa o jsdelivr (CDN feito pra servir arquivos de repositórios GitHub),
+// não a API do GitHub: a API tem limite de 60 requisições/hora por IP pra
+// quem não autentica, e o IP de saída do Cloudflare Workers é compartilhado
+// entre todo mundo que usa a plataforma — essa cota estourou em produção
+// horas depois do primeiro deploy. O jsdelivr é um CDN de verdade, sem
+// esse tipo de limite.
 const DEFAULT_CONFIG_URL =
-  'https://api.github.com/repos/Matheusdearaujo95/Verificador-de-LP/contents/config.json?ref=main';
+  'https://cdn.jsdelivr.net/gh/Matheusdearaujo95/Verificador-de-LP@main/config.json';
 
 async function loadConfig(env) {
   const url = env.VIGIA_CONFIG_URL || DEFAULT_CONFIG_URL;
-  const resp = await fetch(url, {
-    headers: {
-      accept: 'application/vnd.github.raw+json',
-      'cache-control': 'no-cache',
-      'user-agent': 'vigia-cloudflare-worker',
-    },
-  });
+  const resp = await fetch(url, { headers: { 'cache-control': 'no-cache' } });
   if (!resp.ok) throw new Error(`HTTP ${resp.status} ao buscar ${url}`);
   return await resp.json();
 }
