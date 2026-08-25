@@ -194,7 +194,9 @@ const SAFE_BROWSING_THREAT_TYPES = [
   'POTENTIALLY_HARMFUL_APPLICATION',
 ];
 
-export async function checkSafeBrowsing(urls: string[], apiKey: string): Promise<CheckResult> {
+// Retorna null quando o próprio Google falhou temporariamente (não é
+// informação sobre o site, não deve virar alerta nem mudar o estado).
+export async function checkSafeBrowsing(urls: string[], apiKey: string): Promise<CheckResult | null> {
   const body = {
     client: { clientId: 'vigia-monitor', clientVersion: '1.0' },
     threatInfo: {
@@ -204,8 +206,9 @@ export async function checkSafeBrowsing(urls: string[], apiKey: string): Promise
       threatEntries: urls.map((url) => ({ url })),
     },
   };
+  let resp: Response;
   try {
-    const resp = await withTimeout(
+    resp = await withTimeout(
       fetch(`https://safebrowsing.googleapis.com/v4/threatMatches:find`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
@@ -213,43 +216,32 @@ export async function checkSafeBrowsing(urls: string[], apiKey: string): Promise
       }),
       REQUEST_TIMEOUT_MS
     );
-    if (!resp.ok) return { ok: false, detail: `Safe Browsing respondeu HTTP ${resp.status}: ${await resp.text()}` };
-    const data = await resp.json();
-    const matches = data.matches || [];
-    if (matches.length) {
-      const found = [...new Set(matches.map((m: any) => `${m.threat?.url ?? '?'} (${m.threatType ?? '?'})`))].sort();
-      return { ok: false, detail: `Google Safe Browsing encontrou problema: ${found.join(', ')}` };
-    }
-    return {
-      ok: true,
-      detail: `nenhuma URL marcada como phishing/malware pelo Google Safe Browsing (${urls.length} verificadas)`,
-    };
-  } catch (err) {
-    return { ok: false, detail: `erro ao consultar o Google Safe Browsing: ${(err as Error).message}` };
+  } catch {
+    return null; // falha de rede: tenta de novo na próxima
   }
-}
 
-export async function checkPagespeed(url: string, apiKey: string, alertBelow: number): Promise<CheckResult> {
-  try {
-    const params = new URLSearchParams({ url, strategy: 'mobile', category: 'performance' });
-    const resp = await withTimeout(
-      fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`, {
-        headers: { 'x-goog-api-key': apiKey },
-      }),
-      90000
-    );
-    if (!resp.ok) return { ok: false, detail: `PageSpeed Insights respondeu HTTP ${resp.status}: ${await resp.text()}` };
-    const data = await resp.json();
-    const score = data.lighthouseResult.categories.performance.score;
-    const scorePct = Math.round(score * 100);
-    if (score < alertBelow) {
-      return {
-        ok: false,
-        detail: `nota de performance (mobile) caiu pra ${scorePct}/100, abaixo do limite de ${Math.round(alertBelow * 100)}`,
-      };
-    }
-    return { ok: true, detail: `nota de performance (mobile): ${scorePct}/100` };
-  } catch (err) {
-    return { ok: false, detail: `erro ao consultar o PageSpeed Insights: ${(err as Error).message}` };
+  if (resp.status >= 500) return null; // erro do lado do Google, não do site
+  if (resp.status >= 400) {
+    return {
+      ok: false,
+      detail: `Google Safe Browsing recusou a consulta (HTTP ${resp.status}) — provavelmente a GOOGLE_API_KEY está errada ou sem permissão`,
+    };
   }
+
+  let data;
+  try {
+    data = await resp.json();
+  } catch {
+    return null;
+  }
+
+  const matches = data.matches || [];
+  if (matches.length) {
+    const found = [...new Set(matches.map((m: any) => `${m.threat?.url ?? '?'} (${m.threatType ?? '?'})`))].sort();
+    return { ok: false, detail: `Google Safe Browsing encontrou problema: ${found.join(', ')}` };
+  }
+  return {
+    ok: true,
+    detail: `nenhuma URL marcada como phishing/malware pelo Google Safe Browsing (${urls.length} verificadas)`,
+  };
 }

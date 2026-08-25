@@ -7,12 +7,30 @@ import {
   checkInstagramBio,
   checkAdLinkUtms,
   checkSafeBrowsing,
-  checkPagespeed,
 } from './checks.js';
 import { validateConfig } from './validate.js';
 import { sendAlert } from './alerts.js';
 
 const PROVIDER_NAME = 'Cloudflare Workers';
+
+const CHECK_FRIENDLY_LABELS = {
+  dns_resolvers: 'DNS do site',
+  dns_region: 'DNS visto de diferentes regiões',
+  ssl: 'Certificado de segurança (HTTPS)',
+  checkout: 'Link de pagamento (checkout)',
+  instagram_bio: 'Link da bio do Instagram',
+  safe_browsing: 'Reputação do site no Google (phishing/malware)',
+};
+
+function friendlyCheckLabel(checkKey) {
+  if (CHECK_FRIENDLY_LABELS[checkKey]) return CHECK_FRIENDLY_LABELS[checkKey];
+  if (checkKey.startsWith('content_')) {
+    const device = checkKey.split('_')[1];
+    return `Texto do botão de compra (${device === 'mobile' ? 'celular' : 'computador'})`;
+  }
+  if (checkKey.startsWith('ad_link_')) return 'Link de anúncio (rastreamento UTM)';
+  return checkKey;
+}
 
 // Assim como no Deno Deploy, o config.json não fica "gravado" dentro do
 // Worker — é buscado ao vivo a cada execução. Editar o config.json (pelo
@@ -64,10 +82,8 @@ async function runSiteChecks(site, env) {
   if (env.GOOGLE_API_KEY) {
     const homeUrl = `https://${site.domain}/`;
     const urlsToCheck = [...new Set([homeUrl, site.checkout_url])];
-    results.safe_browsing = await checkSafeBrowsing(urlsToCheck, env.GOOGLE_API_KEY);
-
-    const pagespeedAlertBelow = site.pagespeed_alert_below ?? 0.5;
-    results.pagespeed = await checkPagespeed(homeUrl, env.GOOGLE_API_KEY, pagespeedAlertBelow);
+    const safeBrowsingResult = await checkSafeBrowsing(urlsToCheck, env.GOOGLE_API_KEY);
+    if (safeBrowsingResult !== null) results.safe_browsing = safeBrowsingResult;
   }
 
   return results;
@@ -109,8 +125,9 @@ async function runVigia(env) {
     for (const [checkKey, result] of Object.entries(results)) {
       const previous = previousState[checkKey];
       if (!previous || previous.ok !== result.ok) {
-        const statusWord = result.ok ? 'OK' : 'FALHA';
-        await sendAlert(env, PROVIDER_NAME, `${site.name} — ${checkKey}: ${statusWord}`, result.detail);
+        const label = friendlyCheckLabel(checkKey);
+        const statusWord = result.ok ? 'voltou ao normal' : 'PROBLEMA';
+        await sendAlert(env, PROVIDER_NAME, `${site.name} — ${label}: ${statusWord}`, result.detail);
       }
       newState[checkKey] = { ok: result.ok, detail: result.detail, checked_at: new Date().toISOString() };
     }

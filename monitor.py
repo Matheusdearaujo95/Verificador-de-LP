@@ -382,7 +382,9 @@ SAFE_BROWSING_THREAT_TYPES = [
 ]
 
 
-def check_safe_browsing(urls: list[str]) -> CheckResult:
+def check_safe_browsing(urls: list[str]) -> CheckResult | None:
+    """Retorna None quando o próprio Google falhou temporariamente (não é
+    informação sobre o site, não deve virar alerta nem mudar o estado)."""
     body = {
         "client": {"clientId": "vigia-monitor", "clientVersion": "1.0"},
         "threatInfo": {
@@ -398,35 +400,24 @@ def check_safe_browsing(urls: list[str]) -> CheckResult:
             json=body,
             timeout=REQUEST_TIMEOUT,
         )
-        resp.raise_for_status()
+    except Exception:  # noqa: BLE001 — falha de rede: tenta de novo na próxima
+        return None
+
+    if resp.status_code >= 500:
+        return None  # erro do lado do Google, não do site
+    if resp.status_code >= 400:
+        return CheckResult(False, f"Google Safe Browsing recusou a consulta (HTTP {resp.status_code}) — provavelmente a GOOGLE_API_KEY está errada ou sem permissão")
+
+    try:
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001
-        return CheckResult(False, f"erro ao consultar o Google Safe Browsing: {exc}")
+    except Exception:  # noqa: BLE001
+        return None
 
     matches = data.get("matches", [])
     if matches:
         found = sorted({m.get("threat", {}).get("url", "?") + " (" + m.get("threatType", "?") + ")" for m in matches})
         return CheckResult(False, f"Google Safe Browsing encontrou problema: {', '.join(found)}")
     return CheckResult(True, f"nenhuma URL marcada como phishing/malware pelo Google Safe Browsing ({len(urls)} verificadas)")
-
-
-def check_pagespeed(url: str, alert_below: float) -> CheckResult:
-    try:
-        resp = requests.get(
-            "https://www.googleapis.com/pagespeedonline/v5/runPagespeed",
-            params={"url": url, "key": GOOGLE_API_KEY, "strategy": "mobile", "category": "performance"},
-            timeout=90,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        score = data["lighthouseResult"]["categories"]["performance"]["score"]
-    except Exception as exc:  # noqa: BLE001
-        return CheckResult(False, f"erro ao consultar o PageSpeed Insights: {exc}")
-
-    score_pct = round(score * 100)
-    if score < alert_below:
-        return CheckResult(False, f"nota de performance (mobile) caiu pra {score_pct}/100, abaixo do limite de {round(alert_below * 100)}")
-    return CheckResult(True, f"nota de performance (mobile): {score_pct}/100")
 
 
 def strip_tracking_params(url: str) -> str:
@@ -523,6 +514,28 @@ def send_whatsapp_callmebot(message: str) -> None:
             print(f"[alerta] falha ao enviar WhatsApp via CallMeBot pra {phone} (esperado, não é confiável): {exc}")
 
 
+CHECK_FRIENDLY_LABELS = {
+    "dns_resolvers": "DNS do site",
+    "dns_region": "DNS visto de diferentes regiões",
+    "ssl": "Certificado de segurança (HTTPS)",
+    "checkout": "Link de pagamento (checkout)",
+    "instagram_bio": "Link da bio do Instagram",
+    "safe_browsing": "Reputação do site no Google (phishing/malware)",
+}
+
+
+def friendly_check_label(check_key: str) -> str:
+    if check_key in CHECK_FRIENDLY_LABELS:
+        return CHECK_FRIENDLY_LABELS[check_key]
+    if check_key.startswith("content_"):
+        device = check_key.split("_", 1)[1]
+        device_label = "celular" if device == "mobile" else "computador"
+        return f"Texto do botão de compra ({device_label})"
+    if check_key.startswith("ad_link_"):
+        return "Link de anúncio (rastreamento UTM)"
+    return check_key
+
+
 def send_alert(subject: str, message: str) -> None:
     full_message = f"[Vigia | {PROVIDER_NAME}] {subject}\n\n{message}"
     print(full_message)
@@ -566,10 +579,9 @@ def build_site_checks(site: dict) -> dict:
     if GOOGLE_API_KEY:
         home_url = f"https://{site['domain']}/"
         urls_to_check = sorted({home_url, site["checkout_url"]})
-        results["safe_browsing"] = check_safe_browsing(urls_to_check)
-
-        pagespeed_alert_below = site.get("pagespeed_alert_below", 0.5)
-        results["pagespeed"] = check_pagespeed(home_url, pagespeed_alert_below)
+        safe_browsing_result = check_safe_browsing(urls_to_check)
+        if safe_browsing_result is not None:
+            results["safe_browsing"] = safe_browsing_result
 
     return results
 
@@ -632,9 +644,10 @@ def run() -> int:
 
             if previous_ok is None or previous_ok != result.ok:
                 had_transition = True
-                status_word = "OK" if result.ok else "FALHA"
+                label = friendly_check_label(check_key)
+                status_word = "voltou ao normal" if result.ok else "PROBLEMA"
                 send_alert(
-                    f"{site['name']} — {check_key}: {status_word}",
+                    f"{site['name']} — {label}: {status_word}",
                     result.detail,
                 )
 

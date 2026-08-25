@@ -7,13 +7,31 @@ import {
   checkInstagramBio,
   checkAdLinkUtms,
   checkSafeBrowsing,
-  checkPagespeed,
   type CheckResult,
 } from './checks.ts';
 import { validateConfig } from './validate.ts';
 import { sendAlert } from './alerts.ts';
 
 const PROVIDER_NAME = 'Deno Deploy';
+
+const CHECK_FRIENDLY_LABELS: Record<string, string> = {
+  dns_resolvers: 'DNS do site',
+  dns_region: 'DNS visto de diferentes regiões',
+  ssl: 'Certificado de segurança (HTTPS)',
+  checkout: 'Link de pagamento (checkout)',
+  instagram_bio: 'Link da bio do Instagram',
+  safe_browsing: 'Reputação do site no Google (phishing/malware)',
+};
+
+function friendlyCheckLabel(checkKey: string): string {
+  if (CHECK_FRIENDLY_LABELS[checkKey]) return CHECK_FRIENDLY_LABELS[checkKey];
+  if (checkKey.startsWith('content_')) {
+    const device = checkKey.split('_')[1];
+    return `Texto do botão de compra (${device === 'mobile' ? 'celular' : 'computador'})`;
+  }
+  if (checkKey.startsWith('ad_link_')) return 'Link de anúncio (rastreamento UTM)';
+  return checkKey;
+}
 
 // O Deno Deploy só sobe os arquivos de dentro desta pasta (deno-deploy/),
 // então o config.json (que fica um nível acima, compartilhado com os
@@ -81,10 +99,8 @@ async function runSiteChecks(site: any, env: Record<string, string | undefined>)
   if (env.GOOGLE_API_KEY) {
     const homeUrl = `https://${site.domain}/`;
     const urlsToCheck = [...new Set([homeUrl, site.checkout_url])];
-    results.safe_browsing = await checkSafeBrowsing(urlsToCheck, env.GOOGLE_API_KEY);
-
-    const pagespeedAlertBelow = site.pagespeed_alert_below ?? 0.5;
-    results.pagespeed = await checkPagespeed(homeUrl, env.GOOGLE_API_KEY, pagespeedAlertBelow);
+    const safeBrowsingResult = await checkSafeBrowsing(urlsToCheck, env.GOOGLE_API_KEY);
+    if (safeBrowsingResult !== null) results.safe_browsing = safeBrowsingResult;
   }
 
   return results;
@@ -131,8 +147,9 @@ async function runVigia() {
       for (const [checkKey, result] of Object.entries(results)) {
         const previous = previousState[checkKey];
         if (!previous || previous.ok !== result.ok) {
-          const statusWord = result.ok ? 'OK' : 'FALHA';
-          await sendAlert(env, PROVIDER_NAME, `${site.name} — ${checkKey}: ${statusWord}`, result.detail);
+          const label = friendlyCheckLabel(checkKey);
+          const statusWord = result.ok ? 'voltou ao normal' : 'PROBLEMA';
+          await sendAlert(env, PROVIDER_NAME, `${site.name} — ${label}: ${statusWord}`, result.detail);
         }
         newState[checkKey] = { ok: result.ok, detail: result.detail, checked_at: new Date().toISOString() };
       }
