@@ -149,7 +149,7 @@ async function runVigia() {
 Deno.cron('vigia', '*/15 * * * *', runVigia);
 
 // Só pra permitir disparar manualmente (teste) e servir de health check.
-// A execução de verdade é sempre via Deno.cron acima.
+// A execução de verdade é sempre via Deno.cron acima. (build forçado)
 Deno.serve(async (req: Request) => {
   const url = new URL(req.url);
   if (url.pathname === '/run') {
