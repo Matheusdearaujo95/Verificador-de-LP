@@ -54,6 +54,17 @@ Pra cada site cadastrado no `config.json`:
    `utm_content`, `utm_term`) sobrevivem até o destino final. O risco real
    não é o link cair, é o site descartar os parâmetros no redirect,
    fazendo a venda acontecer sem se saber a origem.
+8. **Google Safe Browsing** (opcional, precisa de `GOOGLE_API_KEY`) —
+   confirma que a home e o link de checkout não foram marcados como
+   phishing/malware pelo Google. Se algum navegador começar a bloquear o
+   site com aquela tela vermelha de aviso, você fica sabendo antes de um
+   cliente reclamar.
+9. **PageSpeed Insights** (opcional, precisa de `GOOGLE_API_KEY`) — nota
+   de performance mobile da home, com aviso se cair abaixo de um limite
+   (`pagespeed_alert_below` no site, padrão 0.5 = 50/100). A nota pode
+   variar um pouco de execução pra execução (o Lighthouse simula a
+   navegação, não é uma medida 100% determinística) — pequenas oscilações
+   são normais, não indicam necessariamente um problema.
 
 Alerta só dispara quando o estado de uma checagem **muda** (ok→falha ou
 falha→ok) — nunca repete o mesmo alerta a cada execução enquanto o
@@ -176,6 +187,22 @@ vírgula pra separar variáveis entre si dentro do mesmo `--update-env-vars`.
 O `monitor.py` e as versões JS/TS aceitam os dois separadores em qualquer
 provedor, então usar `;` em todo lugar por padrão também funciona.
 
+### Google Safe Browsing + PageSpeed Insights (opcional)
+
+Uma única chave de API do Google cobre as duas checagens (`GOOGLE_API_KEY`).
+Se a variável não estiver definida, essas duas checagens simplesmente não
+rodam (não é erro).
+
+1. No mesmo projeto do Google Cloud já usado pelo Cloud Functions, ative as
+   APIs: `gcloud services enable safebrowsing.googleapis.com pagespeedonline.googleapis.com`
+2. Crie a chave: `gcloud services api-keys create --display-name="vigia-google-apis" --api-target=service=safebrowsing.googleapis.com --api-target=service=pagespeedonline.googleapis.com`
+3. Pegue o valor com `--format="value(response.keyString)"` no mesmo comando, ou depois com `gcloud services api-keys get-key-string NOME_DA_CHAVE`.
+
+⚠️ **Cuidado ao copiar essa chave (ou qualquer segredo) pra colar no
+Terminal do Mac** — vale a pena ler o primeiro item do Troubleshooting
+abaixo antes, porque isso já causou um bug real e difícil de diagnosticar
+aqui.
+
 ## Onde cada secret é cadastrado
 
 | Provedor | Comando |
@@ -187,7 +214,8 @@ provedor, então usar `;` em todo lugar por padrão também funciona.
 
 Nomes usados: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `SMTP_HOST`,
 `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `ALERT_EMAIL_TO`,
-`CALLMEBOT_RECIPIENTS` (Deno Deploy não usa os 4 de e-mail).
+`CALLMEBOT_RECIPIENTS`, `GOOGLE_API_KEY` (Deno Deploy não usa os 4 de
+e-mail).
 
 **Importante em qualquer provedor**: depois de cadastrar/editar secrets
 num app que já estava rodando, algumas plataformas (percebido no Deno
@@ -263,6 +291,26 @@ novo já está sendo monitorado.
 Fica registrado aqui porque, se algo parecido acontecer de novo (num
 redeploy, numa VM nova), a causa provavelmente é a mesma.
 
+- **"API key not valid" do Google mesmo com a chave certa** — o mais
+  traiçoeiro de todos. Configuramos o `GOOGLE_API_KEY` no Deno Deploy
+  copiando o valor de uma mensagem de chat e colando no Terminal do Mac.
+  O valor "parecia" certo (prefixo e tamanho batiam numa checagem
+  superficial), mas o **Terminal do Mac tem uma proteção que substitui
+  parte de textos colados que parecem segredo por caracteres `•`** — e
+  isso não é só visual, o valor real que chega no comando vem alterado.
+  O resultado: uma chave "quase certa" que o Google rejeitava com uma
+  mensagem genérica de "inválida", sem pista nenhuma do motivo real.
+  Como isso é fácil de acontecer de novo com qualquer segredo colado no
+  Terminal, o jeito mais seguro de configurar uma variável sensível
+  quando não dá pra rodar o comando direto (sem depender de colar) é:
+  1. Buscar o valor **programaticamente** em vez de colar — ex:
+     `KEY=$(gcloud services api-keys get-key-string NOME_DA_CHAVE --format="value(keyString)")`
+     e depois usar `"$KEY"` no comando seguinte.
+  2. Se não tiver jeito de evitar o "colar", pelo menos filtrar o
+     resultado: `KEY=$(pbpaste | tr -cd 'A-Za-z0-9_-')` (ajuste os
+     caracteres aceitos ao formato do segredo) — isso remove qualquer
+     caractere estranho que tenha entrado no meio do caminho.
+  3. Conferir sempre o tamanho antes de usar: `echo "${#KEY}"`.
 - **`Deno.openKv is not a function`** — a plataforma nova do Deno Deploy
   não vem com KV habilitado por padrão; precisa provisionar e vincular
   explicitamente: `deno deploy database provision NOME --kind denokv --org ORG` seguido de `deno deploy database assign NOME --org ORG --app APP`.
