@@ -38,13 +38,37 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+// Tenta `fn()` de novo em caso de erro de rede ou resposta 5xx — a maioria
+// das falhas passageiras se resolve sozinha numa segunda tentativa. Só
+// desiste de verdade (e deixa a checagem virar FALHA/alerta) depois de
+// `attempts` tentativas.
+async function retryCall(fn, attempts = 3, delayMs = 3000) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const result = await fn();
+      const status = result && typeof result.status === 'number' ? result.status : undefined;
+      if (status === undefined || status < 500) return result;
+      lastErr = new Error(`HTTP ${status}`);
+    } catch (err) {
+      lastErr = err;
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  throw lastErr;
+}
+
 export async function checkDnsResolvers(domain, expectedIp) {
   const results = {};
   const errors = [];
   await Promise.all(
     Object.entries(DOH_RESOLVERS).map(async ([name, endpoint]) => {
       try {
-        const ips = await withTimeout(resolveA(endpoint, domain), REQUEST_TIMEOUT_MS);
+        const ips = await retryCall(
+          () => withTimeout(resolveA(endpoint, domain), REQUEST_TIMEOUT_MS),
+          2,
+          2000
+        );
         results[name] = ips.slice().sort();
       } catch (err) {
         errors.push(`${name}: ${err.message}`);
@@ -77,9 +101,10 @@ export async function checkDnsRegion(domain, expectedIp) {
   await Promise.all(
     Object.entries(ECS_REGIONS).map(async ([region, subnet]) => {
       try {
-        const ips = await withTimeout(
-          resolveA(DOH_RESOLVERS.Google, domain, subnet),
-          REQUEST_TIMEOUT_MS
+        const ips = await retryCall(
+          () => withTimeout(resolveA(DOH_RESOLVERS.Google, domain, subnet), REQUEST_TIMEOUT_MS),
+          2,
+          2000
         );
         if (ips.includes(expectedIp)) okRegions.push(region);
         else problems.push(`${region} (${subnet}) recebeu ${JSON.stringify(ips)}`);
@@ -99,9 +124,8 @@ export async function checkSslReachable(domain) {
   // N dias" fica por conta dos provedores em Python (GitHub Actions,
   // Google Cloud Functions, Oracle).
   try {
-    const resp = await withTimeout(
-      fetch(`https://${domain}/`, { method: 'HEAD' }),
-      REQUEST_TIMEOUT_MS
+    const resp = await retryCall(
+      () => withTimeout(fetch(`https://${domain}/`, { method: 'HEAD' }), REQUEST_TIMEOUT_MS)
     );
     return {
       ok: true,
@@ -118,9 +142,11 @@ function normalizeWhitespace(text) {
 
 export async function checkContent(url, device, expectedTexts) {
   try {
-    const resp = await withTimeout(
-      fetch(url, { headers: { 'User-Agent': DEVICE_USER_AGENTS[device] || DEVICE_USER_AGENTS.desktop } }),
-      REQUEST_TIMEOUT_MS
+    const resp = await retryCall(() =>
+      withTimeout(
+        fetch(url, { headers: { 'User-Agent': DEVICE_USER_AGENTS[device] || DEVICE_USER_AGENTS.desktop } }),
+        REQUEST_TIMEOUT_MS
+      )
     );
     if (resp.status >= 400) return { ok: false, detail: `${url} respondeu HTTP ${resp.status}` };
     const html = normalizeWhitespace(await resp.text());
@@ -136,7 +162,7 @@ export async function checkContent(url, device, expectedTexts) {
 
 export async function checkUrlIsUp(url, label) {
   try {
-    const resp = await withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS));
     if (resp.status >= 400) return { ok: false, detail: `${label} respondeu HTTP ${resp.status}` };
     return { ok: true, detail: `${label} no ar (HTTP ${resp.status})` };
   } catch (err) {
@@ -146,7 +172,7 @@ export async function checkUrlIsUp(url, label) {
 
 export async function checkInstagramBio(url, expectedDomain) {
   try {
-    const resp = await withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS));
     const finalDomain = new URL(resp.url).hostname;
     if (!finalDomain.includes(expectedDomain)) {
       return {
@@ -171,7 +197,7 @@ export async function checkAdLinkUtms(url) {
     return { ok: false, detail: 'URL de anúncio não tem nenhum parâmetro utm_* para checar' };
   }
   try {
-    const resp = await withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS));
     const finalParams = new URL(resp.url).searchParams;
     const lost = [];
     const changed = [];

@@ -42,13 +42,33 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   ]);
 }
 
+// Tenta `fn()` de novo em caso de erro de rede ou resposta 5xx — a maioria
+// das falhas passageiras se resolve sozinha numa segunda tentativa. Só
+// desiste de verdade (e deixa a checagem virar FALHA/alerta) depois de
+// `attempts` tentativas.
+async function retryCall<T>(fn: () => Promise<T>, attempts = 3, delayMs = 3000): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const result = await fn();
+      const status = (result as { status?: number })?.status;
+      if (status === undefined || status < 500) return result;
+      lastErr = new Error(`HTTP ${status}`);
+    } catch (err) {
+      lastErr = err;
+    }
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, delayMs));
+  }
+  throw lastErr;
+}
+
 export async function checkDnsResolvers(domain: string, expectedIp: string): Promise<CheckResult> {
   const results: Record<string, string[]> = {};
   const errors: string[] = [];
   await Promise.all(
     Object.entries(DOH_RESOLVERS).map(async ([name, endpoint]) => {
       try {
-        const ips = await withTimeout(resolveA(endpoint, domain), REQUEST_TIMEOUT_MS);
+        const ips = await retryCall(() => withTimeout(resolveA(endpoint, domain), REQUEST_TIMEOUT_MS), 2, 2000);
         results[name] = ips.slice().sort();
       } catch (err) {
         errors.push(`${name}: ${(err as Error).message}`);
@@ -81,7 +101,11 @@ export async function checkDnsRegion(domain: string, expectedIp: string): Promis
   await Promise.all(
     Object.entries(ECS_REGIONS).map(async ([region, subnet]) => {
       try {
-        const ips = await withTimeout(resolveA(DOH_RESOLVERS.Google, domain, subnet), REQUEST_TIMEOUT_MS);
+        const ips = await retryCall(
+          () => withTimeout(resolveA(DOH_RESOLVERS.Google, domain, subnet), REQUEST_TIMEOUT_MS),
+          2,
+          2000
+        );
         if (ips.includes(expectedIp)) okRegions.push(region);
         else problems.push(`${region} (${subnet}) recebeu ${JSON.stringify(ips)}`);
       } catch (err) {
@@ -100,7 +124,7 @@ export async function checkSslReachable(domain: string): Promise<CheckResult> {
   // vencido/inválido/errado). O aviso "vence em N dias" fica por conta dos
   // provedores em Python (GitHub Actions, Google Cloud Functions, Oracle).
   try {
-    const resp = await withTimeout(fetch(`https://${domain}/`, { method: 'HEAD' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(`https://${domain}/`, { method: 'HEAD' }), REQUEST_TIMEOUT_MS));
     return {
       ok: true,
       detail: `handshake HTTPS OK (HTTP ${resp.status}) — validade em dias só é checada nos provedores Python`,
@@ -116,9 +140,11 @@ function normalizeWhitespace(text: string): string {
 
 export async function checkContent(url: string, device: string, expectedTexts: string[]): Promise<CheckResult> {
   try {
-    const resp = await withTimeout(
-      fetch(url, { headers: { 'User-Agent': DEVICE_USER_AGENTS[device] ?? DEVICE_USER_AGENTS.desktop } }),
-      REQUEST_TIMEOUT_MS
+    const resp = await retryCall(() =>
+      withTimeout(
+        fetch(url, { headers: { 'User-Agent': DEVICE_USER_AGENTS[device] ?? DEVICE_USER_AGENTS.desktop } }),
+        REQUEST_TIMEOUT_MS
+      )
     );
     if (resp.status >= 400) return { ok: false, detail: `${url} respondeu HTTP ${resp.status}` };
     const html = normalizeWhitespace(await resp.text());
@@ -134,7 +160,7 @@ export async function checkContent(url: string, device: string, expectedTexts: s
 
 export async function checkUrlIsUp(url: string, label: string): Promise<CheckResult> {
   try {
-    const resp = await withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS));
     if (resp.status >= 400) return { ok: false, detail: `${label} respondeu HTTP ${resp.status}` };
     return { ok: true, detail: `${label} no ar (HTTP ${resp.status})` };
   } catch (err) {
@@ -144,7 +170,7 @@ export async function checkUrlIsUp(url: string, label: string): Promise<CheckRes
 
 export async function checkInstagramBio(url: string, expectedDomain: string): Promise<CheckResult> {
   try {
-    const resp = await withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS));
     const finalDomain = new URL(resp.url).hostname;
     if (!finalDomain.includes(expectedDomain)) {
       return { ok: false, detail: `link da bio terminou em '${finalDomain}', esperado '${expectedDomain}'` };
@@ -166,7 +192,7 @@ export async function checkAdLinkUtms(url: string): Promise<CheckResult> {
     return { ok: false, detail: 'URL de anúncio não tem nenhum parâmetro utm_* para checar' };
   }
   try {
-    const resp = await withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS);
+    const resp = await retryCall(() => withTimeout(fetch(url, { redirect: 'follow' }), REQUEST_TIMEOUT_MS));
     const finalParams = new URL(resp.url).searchParams;
     const lost: string[] = [];
     const changed: string[] = [];

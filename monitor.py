@@ -18,6 +18,7 @@ import smtplib
 import socket
 import ssl
 import sys
+import time
 import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
@@ -54,6 +55,32 @@ GCS_BUCKET = os.environ.get("VIGIA_GCS_BUCKET")
 GCS_BLOB = os.environ.get("VIGIA_GCS_BLOB", "state.json")
 
 REQUEST_TIMEOUT = 15
+RETRY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 3
+
+
+def retry_call(fn, attempts: int = RETRY_ATTEMPTS, delay: float = RETRY_DELAY_SECONDS):
+    """Tenta `fn()` de novo em caso de erro de rede ou resposta 5xx — a
+    maioria das falhas passageiras (rede da máquina que roda o script
+    engasgando por um instante, servidor sobrecarregado momentaneamente)
+    se resolve sozinha numa segunda tentativa. Só desiste de verdade (e
+    deixa a checagem virar FALHA/alerta) depois de `attempts` tentativas."""
+    result = None
+    last_exc: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            result = fn()
+            status = getattr(result, "status_code", None)
+            if status is None or status < 500:
+                return result
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            result = None
+        if attempt < attempts - 1:
+            time.sleep(delay)
+    if last_exc is not None:
+        raise last_exc
+    return result
 
 DEFAULT_DNS_RESOLVERS = {
     "Google": "8.8.8.8",
@@ -221,13 +248,16 @@ def validate_config(config: dict) -> list[str]:
 def check_dns_resolvers(domain: str, expected_ip: str, resolvers: dict) -> CheckResult:
     results = {}
     errors = []
+    def query_resolver(ip: str):
+        resolver = dns.resolver.Resolver(configure=False)
+        resolver.nameservers = [ip]
+        resolver.timeout = 5
+        resolver.lifetime = 5
+        return resolver.resolve(domain, "A")
+
     for name, ip in resolvers.items():
         try:
-            resolver = dns.resolver.Resolver(configure=False)
-            resolver.nameservers = [ip]
-            resolver.timeout = 5
-            resolver.lifetime = 5
-            answer = resolver.resolve(domain, "A")
+            answer = retry_call(lambda ip=ip: query_resolver(ip), attempts=2, delay=2)
             ips = sorted(r.to_text() for r in answer)
             results[name] = ips
         except Exception as exc:  # noqa: BLE001 - qualquer falha de DNS vira "detalhe"
@@ -254,14 +284,15 @@ def check_dns_resolvers(domain: str, expected_ip: str, resolvers: dict) -> Check
 def check_dns_region(domain: str, expected_ip: str, regions: dict) -> CheckResult:
     problems = []
     ok_regions = []
+    def query_region(subnet: str) -> dict:
+        params = urllib.parse.urlencode({"name": domain, "type": "A", "edns_client_subnet": subnet})
+        url = f"https://dns.google/resolve?{params}"
+        with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+
     for region_name, subnet in regions.items():
         try:
-            params = urllib.parse.urlencode(
-                {"name": domain, "type": "A", "edns_client_subnet": subnet}
-            )
-            url = f"https://dns.google/resolve?{params}"
-            with urllib.request.urlopen(url, timeout=REQUEST_TIMEOUT) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            data = retry_call(lambda subnet=subnet: query_region(subnet), attempts=2, delay=2)
             answers = [a["data"] for a in data.get("Answer", []) if a.get("type") == 1]
             if expected_ip in answers:
                 ok_regions.append(region_name)
@@ -275,12 +306,16 @@ def check_dns_region(domain: str, expected_ip: str, regions: dict) -> CheckResul
     return CheckResult(True, f"IP esperado confirmado em: {', '.join(ok_regions)}")
 
 
+def _connect_and_get_cert(domain: str) -> dict:
+    context = ssl.create_default_context()
+    with socket.create_connection((domain, 443), timeout=REQUEST_TIMEOUT) as sock:
+        with context.wrap_socket(sock, server_hostname=domain) as ssock:
+            return ssock.getpeercert()
+
+
 def check_ssl_certificate(domain: str, alert_days: int) -> CheckResult:
     try:
-        context = ssl.create_default_context()
-        with socket.create_connection((domain, 443), timeout=REQUEST_TIMEOUT) as sock:
-            with context.wrap_socket(sock, server_hostname=domain) as ssock:
-                cert = ssock.getpeercert()
+        cert = retry_call(lambda: _connect_and_get_cert(domain))
         not_after = datetime.strptime(cert["notAfter"], "%b %d %H:%M:%S %Y %Z").replace(
             tzinfo=timezone.utc
         )
@@ -302,9 +337,9 @@ def normalize_whitespace(text: str) -> str:
 def check_content(url: str, device: str, expected_texts: list[str]) -> CheckResult:
     headers = {"User-Agent": DEVICE_USER_AGENTS.get(device, DEVICE_USER_AGENTS["desktop"])}
     try:
-        resp = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
+        resp = retry_call(lambda: requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT))
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(False, f"erro ao acessar {url}: {exc}")
+        return CheckResult(False, f"erro ao acessar {url} (depois de {RETRY_ATTEMPTS} tentativas): {exc}")
 
     if resp.status_code >= 400:
         return CheckResult(False, f"{url} respondeu HTTP {resp.status_code}")
@@ -318,19 +353,19 @@ def check_content(url: str, device: str, expected_texts: list[str]) -> CheckResu
 
 def check_url_is_up(url: str, label: str) -> CheckResult:
     try:
-        resp = requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        resp = retry_call(lambda: requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True))
         if resp.status_code >= 400:
             return CheckResult(False, f"{label} respondeu HTTP {resp.status_code}")
         return CheckResult(True, f"{label} no ar (HTTP {resp.status_code})")
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(False, f"erro ao acessar {label}: {exc}")
+        return CheckResult(False, f"erro ao acessar {label} (depois de {RETRY_ATTEMPTS} tentativas): {exc}")
 
 
 def check_instagram_bio(url: str, expected_domain: str) -> CheckResult:
     try:
-        resp = requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        resp = retry_call(lambda: requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True))
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(False, f"erro ao acessar link da bio: {exc}")
+        return CheckResult(False, f"erro ao acessar link da bio (depois de {RETRY_ATTEMPTS} tentativas): {exc}")
 
     final_domain = urllib.parse.urlparse(resp.url).netloc
     if expected_domain not in final_domain:
@@ -350,9 +385,9 @@ def check_ad_link_utms(url: str) -> CheckResult:
         return CheckResult(False, "URL de anúncio não tem nenhum parâmetro utm_* para checar")
 
     try:
-        resp = requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True)
+        resp = retry_call(lambda: requests.get(url, timeout=REQUEST_TIMEOUT, allow_redirects=True))
     except Exception as exc:  # noqa: BLE001
-        return CheckResult(False, f"erro ao seguir redirecionamento: {exc}")
+        return CheckResult(False, f"erro ao seguir redirecionamento (depois de {RETRY_ATTEMPTS} tentativas): {exc}")
 
     final_params = urllib.parse.parse_qs(urllib.parse.urlparse(resp.url).query)
     lost = []
