@@ -161,9 +161,9 @@ async function runVigia() {
   }
 }
 
-// Descoberto e agendado automaticamente pelo Deno Deploy no deploy — roda
-// a cada 15 minutos, igual aos outros provedores.
-Deno.cron('vigia', '*/15 * * * *', runVigia);
+// Vigia pausado (a pedido) em 28/08/2026 — pra retomar, descomente a linha
+// abaixo e rode o deploy de novo.
+// Deno.cron('vigia', '*/15 * * * *', runVigia);
 
 // Só pra permitir disparar manualmente (teste) e servir de health check.
 // A execução de verdade é sempre via Deno.cron acima. (build forçado)
