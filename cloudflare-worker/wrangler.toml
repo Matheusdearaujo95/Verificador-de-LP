@@ -4,7 +4,9 @@ compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
 
 [triggers]
-crons = ["*/15 * * * *"]
+# Vigia pausado (a pedido) em 28/08/2026 — pra retomar, troque de volta pra
+# crons = ["*/15 * * * *"] e rode `wrangler deploy` de novo.
+crons = []
 
 # Criar com: wrangler kv namespace create VIGIA_STATE
 # e colar o "id" que o comando devolver aqui embaixo.
